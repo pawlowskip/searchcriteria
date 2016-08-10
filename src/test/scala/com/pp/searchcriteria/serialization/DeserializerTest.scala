@@ -37,45 +37,102 @@ object DeserializerTest extends TestSuite {
       * - {assert(d.deserialize("dasd").isInstanceOf[Fail[Char]])}
     }
 
-    "Test [5] - Deserializer foldWhile" - {
+    "Test [5a] - Deserializer transformWhile" - {
       val predicate = (c: Char) => c.isDigit
-      val d = foldWhile[Char, Char](predicate, identity)
+      val d = transformWhile[Char, Char](predicate, identity)
 
-      * - {assert(d.deserialize("123d") == Ok(Seq('1', '2', '3'), "d", 3, Nil))}
-      * - {assert(d.deserialize(emptyInput[Char]) == Ok(Seq[Char](), emptyInput[Char], 0, Nil))}
-      * - {assert(d.deserialize("123") == Ok(Seq('1', '2', '3'), emptyInput[Char], 3, Nil))}
+      val res1 = d.deserialize("123d")
+      assert(
+        res1 ==
+          Ok(
+            Seq('1', '2', '3'),
+            "d",
+            3,
+            List("Token: [d] not satisfy predicate: Token not satisfy predicate in foldWhile. Back to previous result.")
+          )
+      )
+    }
+
+    "Test [5b] - Deserializer transformWhile" - {
+      val predicate = (c: Char) => c.isDigit
+      val d = transformWhile[Char, Char](predicate, identity)
+
+      val res2 = d.deserialize(emptyInput[Char])
+      assert(
+        res2 ==
+          Ok(
+            Seq[Char](),
+            emptyInput[Char],
+            0,
+            List("The input is empty. There is no token to parse.")
+          )
+      )
+    }
+
+    "Test [5c] - Deserializer transformWhile" - {
+      val predicate = (c: Char) => c.isDigit
+      val d = transformWhile[Char, Char](predicate, identity)
+
+      val res3 = d.deserialize("123")
+      assert(
+        res3 ==
+          Ok(
+            List('1', '2', '3'),
+            emptyInput[Char],
+            3,
+            List("The input is empty. There is no token to parse.")
+          )
+      )
     }
 
     "Test [6] - Deserializer zeroOrMore" - {
       val d = zeroOrMore[Char, Int]('!', seq => seq.size)
 
-      * - {assert(d.deserialize("no") == Ok(0, "no", 0, Nil))}
-      * - {assert(d.deserialize(emptyInput[Char]) == Ok(0, emptyInput[Char], 0, Nil))}
-      * - {assert(d.deserialize("!!!!!!") == Ok(6, emptyInput[Char], 6, Nil))}
-      * - {assert(d.deserialize("d!!!!!!") == Ok(0, "d!!!!!!", 0, Nil))}
-      * - {assert(d.deserialize("!!!!!!sss!!!!") == Ok(6, "sss!!!!", 6, Nil))}
+      val res1 = d.deserialize("no")
+      val res2 = d.deserialize(emptyInput[Char])
+      val res3 = d.deserialize("!!!!!!")
+      val res4 = d.deserialize("d!!!!!!")
+      val res5 = d.deserialize("!!!!!!sss!!!!")
+
+      res1 ==> Ok(0, "no", 0, List("Token: [n] not satisfy predicate: Token not satisfy predicate in foldWhile. Back to previous result."))
+      res2 ==> Ok(0, emptyInput[Char], 0, List("The input is empty. There is no token to parse."))
+      res3 ==> Ok(6, emptyInput[Char], 6, List("The input is empty. There is no token to parse."))
+      res4 ==> Ok(0, "d!!!!!!", 0, List("Token: [d] not satisfy predicate: Token not satisfy predicate in foldWhile. Back to previous result."))
+      res5 ==> Ok(6, "sss!!!!", 6, List("Token: [s] not satisfy predicate: Token not satisfy predicate in foldWhile. Back to previous result."))
     }
 
     "Test [7] - Deserializer oneOrMore" - {
       val d = oneOrMore[Char, Int]('!', seq => seq.size)
 
-      * - {assert(d.deserialize("!d") == Ok(1, "d", 1, Nil))}
-      * - {assert(d.deserialize("no").isInstanceOf[Fail[Char]])}
-      * - {assert(d.deserialize(emptyInput[Char]).isInstanceOf[Fail[Char]])}
-      * - {assert(d.deserialize("!!!!!!") == Ok(6, emptyInput[Char], 6, Nil))}
-      * - {assert(d.deserialize("d!!!!!!").isInstanceOf[Fail[Char]])}
-      * - {assert(d.deserialize("!!!!!!sss!!!!") == Ok(6, "sss!!!!", 6, Nil))}
+      d.deserialize("!d") ==>
+        Ok(1, "d", 1, List("Token: [d] not satisfy predicate: Token not satisfy predicate in foldWhile. Back to previous result."))
+
+      d.deserialize("no") ==>
+        Fail(
+          "Could not match at least one token: [!].",
+          "no",
+          List("Token: [n] not satisfy predicate: Token not satisfy predicate in foldWhile. Back to previous result.")
+        )
+
+      d.deserialize(emptyInput[Char]).isInstanceOf[Fail[Char]] ==> true
+
+      d.deserialize("!!!!!!") ==> Ok(6, emptyInput[Char], 6, List("The input is empty. There is no token to parse."))
+
+      d.deserialize("d!!!!!!").isInstanceOf[Fail[Char]] ==> true
+
+      d.deserialize("!!!!!!sss!!!!") ==>
+        Ok(6, "sss!!!!", 6, List("Token: [s] not satisfy predicate: Token not satisfy predicate in foldWhile. Back to previous result."))
     }
 
-    "Test [8] - Deserializer times" - {
-      val d = times[Char, Char]('!', 2, '!')
-
-      * - {assert(d.deserialize("!!") == Ok('!', emptyInput[Char], 2, Nil))}
-      * - {assert(d.deserialize("!!!").isInstanceOf[Fail[Char]])}
-      * - {assert(d.deserialize("a!!!").isInstanceOf[Fail[Char]])}
-      * - {assert(d.deserialize(emptyInput[Char]).isInstanceOf[Fail[Char]])}
-      * - {assert(d.deserialize("!!") == Ok('!', emptyInput[Char], 2, Nil))}
-    }
+//    "Test [8] - Deserializer times" - {
+//      val d = times[Char, Char]('!', 2, '!')
+//
+//      d.deserialize("!!") ==> Ok('!', emptyInput[Char], 2, List())
+//      d.deserialize("!!!").isInstanceOf[Fail[Char]] ==> true
+//      d.deserialize("a!!!").isInstanceOf[Fail[Char]] ==> true
+//      d.deserialize(emptyInput[Char]).isInstanceOf[Fail[Char]] ==> true
+//      d.deserialize("!!") ==> Ok('!', emptyInput[Char], 2, Nil)
+//    }
 
     "Test [9] - Deserializer oneOf" - {
       val seq = Seq(('1', '1'), ('2', '2'))
@@ -120,6 +177,26 @@ object DeserializerTest extends TestSuite {
       * - {assert(d3.deserialize("a12").isInstanceOf[Fail[Char]])}
       * - {assert(d3.deserialize("1a2").isInstanceOf[Fail[Char]])}
       * - {assert(d3.deserialize(emptyInput[Char]).isInstanceOf[Fail[Char]])}
+    }
+
+    "Test [11] - Deserializer deserializeTimes" - {
+      val one = single('1', '1')
+      val fiveOnesDes = deserializeTimes(one, 5)(o => true)
+      fiveOnesDes.deserialize("11111") ==> Ok("11111".toList, emptyInput, 5, Nil)
+      fiveOnesDes.deserialize("111111") ==> Ok("11111".toList, "1", 5, Nil)
+      fiveOnesDes.deserialize("1111") ==>
+        Fail(
+          "Fail during processWhile. Processed 4 times, but should be 5.",
+          emptyInput,
+          List("The input is empty. There is no token to parse.")
+        )
+
+      fiveOnesDes.deserialize("1111d") ==>
+        Fail(
+          "Fail during processWhile. Processed 4 times, but should be 5.",
+          "d",
+          List("Input token: [d] should be [1].")
+        )
     }
 
   }

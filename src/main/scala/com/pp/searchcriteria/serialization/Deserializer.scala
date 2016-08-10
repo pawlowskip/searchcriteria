@@ -118,7 +118,17 @@ object Deserializer {
                        (transformer: Token => O): Deserializer[Token, O] =
       Deserializer[Token, O] { input =>
         input.headOption match {
-          case Some(token) if predicate(token) => Ok(transformer(token), input.tail, 1, Nil)
+          case Some(token) if predicate(token) =>
+            try {
+              Ok(transformer(token), input.tail, 1, Nil)
+            } catch {
+              case NonFatal(e) =>
+                Fail(
+                  s"Error during transformation of input token: [$token] in deserializer. Error: ${e.getMessage}",
+                  input,
+                  Nil
+                )
+            }
           case Some(token) => Fail(s"Token: [$token] not satisfy predicate: $failMessage", input, Nil)
           case None => Fail[Token](Messages.emptyInput, input, Nil)
         }
@@ -146,54 +156,54 @@ object Deserializer {
         else Fail("Input not exhausted.", input, Nil)
       )
 
-    def foldWhile[Token, O](predicate: Token => Boolean,
-                            transformer: Token => O): Deserializer[Token, Seq[O]] = {
+    def transformWhile[Token, O](predicate: Token => Boolean,
+                                 transformer: Token => O): Deserializer[Token, Seq[O]] = {
 
       val check: Deserializer[Token, O] =
         DeserializerBuilder
           .check[Token, O](predicate, "Token not satisfy predicate in foldWhile. Back to previous result.")(transformer)
 
       @tailrec
-      def foldWhile0(results: Seq[O], input: Deserializer.Input[Token], tokensParsed: Int): Result[Seq[O], Token] = {
+      def transformWhile0(results: Seq[O], input: Deserializer.Input[Token], tokensParsed: Int): Result[Seq[O], Token] = {
         check.deserialize(input) match {
           case Ok(result, inputLeft, parsed, _) =>
-            foldWhile0(results :+ result, inputLeft, tokensParsed + parsed)
+            transformWhile0(results :+ result, inputLeft, tokensParsed + parsed)
           case Fail(cause, inputLeft, messageStack) =>
             Ok(results, inputLeft, tokensParsed, cause :: messageStack)
         }
       }
       Deserializer[Token, Seq[O]] { input =>
-        foldWhile0(Seq(), input, 0)
+        transformWhile0(Seq(), input, 0)
       }
     }
 
     def zeroOrMore[Token, O](token: Token, transformer: Seq[Token] => O): Deserializer[Token, O] = {
       Deserializer[Token, O] { input =>
         val predicate = (t: Token) => t == token
-        foldWhile[Token, Token](predicate, identity(_)).deserialize(input).map(transformer)
+        transformWhile[Token, Token](predicate, identity(_)).deserialize(input).map(transformer)
       }
     }
 
     def oneOrMore[Token, O](token: Token, transformer: Seq[Token] => O): Deserializer[Token, O] =
       zeroOrMore(token, transformer).mapResult {
         case result: Result[O, Token] if result.tokensParsed == 0 =>
-          Fail(s"Could not match at least one token: [$token].", result.inputLeft, Nil)
+          Fail(s"Could not match at least one token: [$token].", result.inputLeft, result.messageStack)
         case result: Result[O, Token] => result
       }
 
-    def times[Token, O](token: Token, n: Int, out: O): Deserializer[Token, O] =
-      zeroOrMore(token, (t: Seq[Token]) => out).mapResult {
-        case result: Result[O, Token] if result.tokensParsed != n =>
-          Fail(s"Token: [$token] matched ${result.tokensParsed} times. Should be: $n.", result.inputLeft, Nil)
-        case result: Result[O, Token] => result
-      }
-
-    def times[Token, O](token: Token, n: Int)(transformer: Token => O): Deserializer[Token, Seq[O]] =
-      zeroOrMore(token, (t: Seq[Token]) => t.map(transformer)).mapResult {
-        case result: Result[O, Token] if result.tokensParsed != n =>
-          Fail(s"Token: [$token] matched ${result.tokensParsed} times. Should be: $n.", result.inputLeft, Nil)
-        case result: Result[O, Token] => result
-      }
+//    def times[Token, O](token: Token, n: Int, out: O): Deserializer[Token, O] =
+//      zeroOrMore(token, (t: Seq[Token]) => out).mapResult {
+//        case result: Result[O, Token] if result.tokensParsed != n =>
+//          Fail(s"Token: [$token] matched ${result.tokensParsed} times. Should be: $n.", result.inputLeft, result.messageStack)
+//        case result: Result[O, Token] => result
+//      }
+//
+//    def times[Token, O](token: Token, n: Int)(transformer: Token => O): Deserializer[Token, Seq[O]] =
+//      zeroOrMore(token, (t: Seq[Token]) => t.map(transformer)).mapResult {
+//        case result: Result[O, Token] if result.tokensParsed != n =>
+//          Fail(s"Token: [$token] matched ${result.tokensParsed} times. Should be: $n.", result.inputLeft, result.messageStack)
+//        case result: Result[O, Token] => result
+//      }
 
 //    def processWhile[Token, O](des: Deserializer[Token, O])(predicate: O => Boolean): Deserializer[Token, Seq[O]] = {
 //      def processWhile0(acc: Seq[O], parsed: Int): Deserializer[Token, Seq[O]] = {
@@ -207,25 +217,25 @@ object Deserializer {
 //      processWhile0(Seq.empty[O], 0)
 //    }
 
-    def processTimes[Token, O](des: Deserializer[Token, O], n: Int)(predicate: O => Boolean): Deserializer[Token, Seq[O]] = {
+    def deserializeTimes[Token, O](des: Deserializer[Token, O], n: Int)(predicate: O => Boolean): Deserializer[Token, Seq[O]] = {
       require(n > 0)
-      def processWhile0(acc: Seq[O], parsed: Int, times: Int): Deserializer[Token, Seq[O]] = {
+      def deserializeTimes0(acc: Seq[O], parsed: Int, times: Int): Deserializer[Token, Seq[O]] = {
         if (times < n) {
           des.flatMapResult {
             case Ok(out, inputLeft, tokensParsed, _) if predicate(out) =>
-              processWhile0(acc :+ out, parsed + tokensParsed, times + 1)
+              deserializeTimes0(acc :+ out, parsed + tokensParsed, times + 1)
             case Ok(out, inputLeft, tokensParsed, _) =>
-              processWhile0(acc, parsed, times)
+              deserializeTimes0(acc, parsed, times)
             case fail @ Fail(cause, inputLeft, messageStack) =>
               always(Fail(
-                s"Fail during processWhile. Processed $times times, but should be $n. Because of: \n $cause",
+                s"Fail during processWhile. Processed $times times, but should be $n.",
                 inputLeft,
                 cause :: messageStack
               ))
           }
         } else Deserializer((input: Input[Token]) => Ok(acc, input, parsed, Nil))
       }
-      processWhile0(Seq.empty[O], 0, 0)
+      deserializeTimes0(Seq.empty[O], 0, 0)
     }
 
     def oneOfToken[Token, O](tokens: Seq[(Token, O)]): Deserializer[Token, O] = tokens match {

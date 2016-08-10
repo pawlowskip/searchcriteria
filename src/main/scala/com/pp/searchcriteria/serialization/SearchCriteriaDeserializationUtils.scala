@@ -6,6 +6,8 @@ import com.pp.searchcriteria.querystring.QueryString.{QSParam, _}
 import com.pp.searchcriteria.serialization.Deserializer.DeserializerBuilder._
 import com.pp.searchcriteria.serialization.Serialization.Reader
 
+import scala.util.{Try, Success, Failure}
+
 /**
   * Created by pp on 8/8/16.
   */
@@ -23,7 +25,7 @@ object SearchCriteriaDeserializationUtils {
       .flatMap {
         case i if i < 0 => fail(i)
         case i =>
-          processTimes[Token, SearchCriteria[T]](fieldDeserializer, i) { // Can works without this always true
+          deserializeTimes[Token, SearchCriteria[T]](fieldDeserializer, i) { // Can works without this always true
             case searchCriteria: Field[T, _] => true
             case _ => false
           }.map(success(_))
