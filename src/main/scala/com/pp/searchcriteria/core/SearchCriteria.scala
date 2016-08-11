@@ -166,15 +166,12 @@ object SearchCriteria {
     }
 
     override def getDeserializer: Deserializer[QSParam, And[A]] = {
-
-
       multiValueDeserializer(
         keyEqual(identifier),
         _._2.toInt,
         s"Value for param '$identifier' should be convertable to Int.",
-        oneOf(criteria.map(_.getDeserializer)),
-        seq => And(seq),
-        i => Deserializer.failed[Token, And[A]](s"And should contain positive number of criteria (passed $i).")
+        criteria.map(_.getDeserializer),
+        seq => And(seq)
       )
     }
 
@@ -211,9 +208,8 @@ object SearchCriteria {
         keyEqual(identifier),
         _._2.toInt,
         s"Value for param '$identifier' should be convertable to Int.",
-        oneOf(criteria.map(_.getDeserializer)),
-        seq => Or(seq),
-        i => Deserializer.failed[Token, Or[A]](s"Or should contain positive number of criteria (passed $i).")
+        criteria.map(_.getDeserializer),
+        seq => Or(seq)
       )
 
     override def identifier: String = "Or"
@@ -265,7 +261,7 @@ object SearchCriteria {
     override def check(value: A): Boolean = this.value == value
 
     override def getDeserializer: Deserializer[QSParam, Equal[A]] =
-      singleValueDeserializer[A, Equal[A]](keyEqual(identifier), s"Key should equal '$identifier'", reader, Equal[A](_))
+      checkAndTransformDeserializer[A, Equal[A]](keyEqual(identifier), s"Key should equal '$identifier'", reader, Equal[A](_))
 
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
@@ -342,7 +338,7 @@ object SearchCriteria {
     override def check(value: String): Boolean = value.contains(this.value)
 
     override def getDeserializer: Deserializer[QSParam, StringContains] =
-      singleValueDeserializer[String, StringContains](keyEqual(identifier), s"Key should equal '$identifier'", reader, StringContains(_))
+      checkAndTransformDeserializer[String, StringContains](keyEqual(identifier), s"Key should equal '$identifier'", reader, StringContains(_))
 
     override def toQueryString: QS = QueryString.fromPair(identifier, value)
 
@@ -363,7 +359,7 @@ object SearchCriteria {
     override def check(value: T): Boolean = value.contains(this.value)
 
     override def getDeserializer: Deserializer[QSParam, SeqContains[A, T]] =
-      singleValueDeserializer[A, SeqContains[A, T]](keyEqual("SeqContains"), s"Key should equal '$identifier'", reader, SeqContains(_))
+      checkAndTransformDeserializer[A, SeqContains[A, T]](keyEqual("SeqContains"), s"Key should equal '$identifier'", reader, SeqContains(_))
 
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
@@ -384,7 +380,7 @@ object SearchCriteria {
     override def check(value: T): Boolean = value.contains(this.value)
 
     override def getDeserializer: Deserializer[QSParam, SetContains[A, T]] =
-      singleValueDeserializer[A, SetContains[A, T]](keyEqual(identifier), s"Key should equal '$identifier'", reader, SetContains(_))
+      checkAndTransformDeserializer[A, SetContains[A, T]](keyEqual(identifier), s"Key should equal '$identifier'", reader, SetContains(_))
 
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
@@ -402,7 +398,7 @@ object SearchCriteria {
     override def check(value: String): Boolean = regEx.findFirstIn(value).isDefined
 
     override def getDeserializer: Deserializer[QSParam, MatchRegEx] =
-      singleValueDeserializer[String, MatchRegEx](keyEqual(identifier), s"Key should equal '$identifier'", reader, MatchRegEx(_))
+      checkAndTransformDeserializer[String, MatchRegEx](keyEqual(identifier), s"Key should equal '$identifier'", reader, MatchRegEx(_))
 
     override def toQueryString: QS = QueryString.fromPair(identifier, value)
 
@@ -423,7 +419,7 @@ object SearchCriteria {
     override def check(value: N): Boolean = ordering.lt(value, this.value)
 
     override def getDeserializer: Deserializer[QSParam, LessThan[N]] =
-      singleValueDeserializer[N, LessThan[N]](keyEqual(identifier), s"Key should equal '$identifier'", reader, LessThan[N](_))
+      checkAndTransformDeserializer[N, LessThan[N]](keyEqual(identifier), s"Key should equal '$identifier'", reader, LessThan[N](_))
 
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
@@ -444,7 +440,7 @@ object SearchCriteria {
     override def check(value: N): Boolean = ordering.lteq(value, this.value)
 
     override def getDeserializer: Deserializer[QSParam, LessOrEqual[N]] =
-      singleValueDeserializer[N, LessOrEqual[N]](keyEqual(identifier), s"Key should equal '$identifier'", reader, LessOrEqual[N](_))
+      checkAndTransformDeserializer[N, LessOrEqual[N]](keyEqual(identifier), s"Key should equal '$identifier'", reader, LessOrEqual[N](_))
 
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
@@ -465,7 +461,7 @@ object SearchCriteria {
     override def check(value: N): Boolean = ordering.gt(value, this.value)
 
     override def getDeserializer: Deserializer[QSParam, GreaterThan[N]] =
-      singleValueDeserializer[N, GreaterThan[N]](keyEqual(identifier), s"Key should equal '$identifier'", reader, GreaterThan[N](_))
+      checkAndTransformDeserializer[N, GreaterThan[N]](keyEqual(identifier), s"Key should equal '$identifier'", reader, GreaterThan[N](_))
 
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
@@ -486,7 +482,7 @@ object SearchCriteria {
     override def check(value: N): Boolean = ordering.gteq(value, this.value)
 
     override def getDeserializer: Deserializer[QSParam, GreaterOrEqual[N]] =
-      singleValueDeserializer[N, GreaterOrEqual[N]](keyEqual(identifier), s"Key should equal '$identifier'", reader, GreaterOrEqual[N](_))
+      checkAndTransformDeserializer[N, GreaterOrEqual[N]](keyEqual(identifier), s"Key should equal '$identifier'", reader, GreaterOrEqual[N](_))
 
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 

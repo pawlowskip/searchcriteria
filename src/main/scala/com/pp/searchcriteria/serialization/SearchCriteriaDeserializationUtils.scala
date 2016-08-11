@@ -15,26 +15,25 @@ object SearchCriteriaDeserializationUtils {
 
   type Token = QSParam
 
-  def multiValueDeserializer[T, Comb[T]](predicate: Token => Boolean,
-                                         count: Token => Int,
+  def multiValueDeserializer[T, Comb[T]](firstTokenPredicate: Token => Boolean,
+                                         countFromFirstToken: Token => Int,
                                          failMessage: String,
-                                         fieldDeserializer: Deserializer[Token, SearchCriteria[T]],
-                                         success: Seq[SearchCriteria[T]] => Comb[T],
-                                         fail: Int => Deserializer[Token, Comb[T]]): Deserializer[Token, Comb[T]] =
-    check[Token, Int](predicate, failMessage)(count)
+                                         possibleDeserializers: Seq[Deserializer[Token, SearchCriteria[T]]],
+                                         success: Seq[SearchCriteria[T]] => Comb[T]): Deserializer[Token, Comb[T]] =
+    check[Token, Int](firstTokenPredicate, failMessage)(countFromFirstToken)
       .flatMap {
-        case i if i < 0 => fail(i)
+        case i if i < 0 => Deserializer.failed(s"Should contain positive number of required deserializations (passed $i).")
         case i =>
-          deserializeTimes[Token, SearchCriteria[T]](fieldDeserializer, i) { // Can works without this always true
+          deserializeTimes[Token, SearchCriteria[T]](oneOf(possibleDeserializers), i) { // Can works without this always true
             case searchCriteria: Field[T, _] => true
             case _ => false
           }.map(success(_))
       }
 
-  def singleValueDeserializer[T, Comb](predicate: Token => Boolean,
-                                       failMessage: String,
-                                       reader: Reader[T],
-                                       transformer: T => Comb): Deserializer[Token, Comb] =
+  def checkAndTransformDeserializer[T, Comb](predicate: Token => Boolean,
+                                             failMessage: String,
+                                             reader: Reader[T],
+                                             transformer: T => Comb): Deserializer[Token, Comb] =
     for {
       value <- check[Token, T](predicate, failMessage)(t => reader.read(value(t)))
     } yield transformer(value)
