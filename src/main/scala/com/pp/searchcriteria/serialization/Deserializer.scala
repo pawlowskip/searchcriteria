@@ -228,7 +228,7 @@ object Deserializer {
               deserializeTimes0(acc, parsed, times)
             case fail @ Fail(cause, inputLeft, messageStack) =>
               always(Fail(
-                s"Fail during processWhile. Processed $times times, but should be $n.",
+                s"Fail during deserializeTimes. Processed $times times, but should be $n.",
                 inputLeft,
                 cause :: messageStack
               ))
@@ -239,7 +239,7 @@ object Deserializer {
     }
 
     def oneOfToken[Token, O](tokens: Seq[(Token, O)]): Deserializer[Token, O] = tokens match {
-      case Seq() => failed(s"Tokens in oneOfToken are empty.")
+      case Seq() => failed(s"Could not match any of tokens in oneOfTokens.")
       case (token, o) +: rest => single[Token, O](token, o).flatMapResult {
         case ok@Ok(_, _, _, _) => always(ok)
         case Fail(cause, _, messageStack) =>
@@ -250,7 +250,7 @@ object Deserializer {
     }
 
     def oneOf[Token, O](deserializers: Seq[Deserializer[Token, O]]): Deserializer[Token, O] = deserializers match {
-      case Seq() => failed(s"Could not match one of tokens: $deserializers")
+      case Seq() => failed(s"Could not match any of deserializers in oneOf.")
       case des +: rest => des.flatMapResult {
         case ok@Ok(_, _, _, _) => always(ok)
         case Fail(cause, _, messageStack) =>

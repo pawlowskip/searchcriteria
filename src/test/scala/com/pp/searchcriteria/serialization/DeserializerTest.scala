@@ -186,14 +186,14 @@ object DeserializerTest extends TestSuite {
       fiveOnesDes.deserialize("111111") ==> Ok("11111".toList, "1", 5, Nil)
       fiveOnesDes.deserialize("1111") ==>
         Fail(
-          "Fail during processWhile. Processed 4 times, but should be 5.",
+          "Fail during deserializeTimes. Processed 4 times, but should be 5.",
           emptyInput,
           List("The input is empty. There is no token to parse.")
         )
 
       fiveOnesDes.deserialize("1111d") ==>
         Fail(
-          "Fail during processWhile. Processed 4 times, but should be 5.",
+          "Fail during deserializeTimes. Processed 4 times, but should be 5.",
           "d",
           List("Input token: [d] should be [1].")
         )

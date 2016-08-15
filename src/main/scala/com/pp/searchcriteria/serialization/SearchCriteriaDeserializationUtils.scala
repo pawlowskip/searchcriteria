@@ -25,8 +25,7 @@ object SearchCriteriaDeserializationUtils {
         case i if i < 0 => Deserializer.failed(s"Should contain positive number of required deserializations (passed $i).")
         case i =>
           deserializeTimes[Token, SearchCriteria[T]](oneOf(possibleDeserializers), i) { // Can works without this always true
-            case searchCriteria: Field[T, _] => true
-            case _ => false
+            case _  => true
           }.map(success(_))
       }
 
