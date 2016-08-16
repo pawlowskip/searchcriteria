@@ -2,10 +2,10 @@ package com.pp.searchcriteria.serialization
 import com.pp.searchcriteria.core.SearchCriteria
 import com.pp.searchcriteria.core.SearchCriteria.{Equal, Or}
 import com.pp.searchcriteria.querystring.QueryString.QSParam
-import com.pp.searchcriteria.serialization.SearchCriteriaDeserializationUtils._
+import com.pp.searchcriteria.serialization.DeserializationUtils._
 import com.pp.searchcriteria.serialization.Serialization.fromUpickleReader
 import com.pp.searchcriteria.serialization.Deserializer._
-import com.pp.searchcriteria.serialization.Deserializer.DeserializerBuilder._
+import com.pp.searchcriteria.serialization.Deserializer.DeserializerOps._
 import upickle.default._
 import utest.TestSuite
 import utest._
@@ -13,7 +13,7 @@ import utest._
 /**
   * Created by pp on 8/10/16.
   */
-object SearchCriteriaDeserializationUtilsTest extends TestSuite {
+object DeserializationUtilsTest extends TestSuite {
 
   val tests = this {
     "Test [1] - SearchCriteriaDeserializationUtils checkAndTransformDeserializer" - {

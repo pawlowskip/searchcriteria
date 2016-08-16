@@ -3,7 +3,7 @@ package com.pp.searchcriteria.serialization
 import com.pp.searchcriteria.core.SearchCriteria
 import com.pp.searchcriteria.core.SearchCriteria.Field
 import com.pp.searchcriteria.querystring.QueryString.{QSParam, _}
-import com.pp.searchcriteria.serialization.Deserializer.DeserializerBuilder._
+import com.pp.searchcriteria.serialization.Deserializer.DeserializerOps._
 import com.pp.searchcriteria.serialization.Serialization.Reader
 
 import scala.util.{Try, Success, Failure}
@@ -11,7 +11,7 @@ import scala.util.{Try, Success, Failure}
 /**
   * Created by pp on 8/8/16.
   */
-object SearchCriteriaDeserializationUtils {
+object DeserializationUtils {
 
   type Token = QSParam
 

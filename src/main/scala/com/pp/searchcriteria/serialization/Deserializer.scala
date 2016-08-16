@@ -55,8 +55,8 @@ object Deserializer {
   }
 
 
-  implicit def toBuilder[Token, O](des: Deserializer[Token, O]): DeserializerBuilder[Token, O] =
-    new DeserializerBuilder[Token, O] {
+  implicit def toDeserializerOps[Token, O](des: Deserializer[Token, O]): DeserializerOps[Token, O] =
+    new DeserializerOps[Token, O] {
       override val deserializer = des
     }
 
@@ -70,7 +70,7 @@ object Deserializer {
 
   def failed[Token, O](cause: String): Deserializer[Token, O] = Deserializer[Token, O](input => Fail(cause, input, Nil))
 
-  object DeserializerBuilder {
+  object DeserializerOps {
 
     def single[Token, O](token: Token)(transformer: Token => O): Deserializer[Token, O] =
       single(token, transformer(token))
@@ -160,7 +160,7 @@ object Deserializer {
                                  transformer: Token => O): Deserializer[Token, Seq[O]] = {
 
       val check: Deserializer[Token, O] =
-        DeserializerBuilder
+        DeserializerOps
           .check[Token, O](predicate, "Token not satisfy predicate in foldWhile. Back to previous result.")(transformer)
 
       @tailrec
@@ -290,17 +290,17 @@ object Deserializer {
 
   }
 
-  trait DeserializerBuilder[Token, O] {
+  trait DeserializerOps[Token, O] {
     val deserializer: Deserializer[Token, O]
 
     def andThen[O1, O2](other: Deserializer[Token, O1])(resultBinder: (O, O1) => O2) =
-      DeserializerBuilder.andThen(deserializer, other)(resultBinder)
+      DeserializerOps.andThen(deserializer, other)(resultBinder)
 
     def end: Deserializer[Token, O] =
-      DeserializerBuilder.andThen[Token, O, Boolean, O](deserializer, DeserializerBuilder.isExhausted)((o, b) => o)
+      DeserializerOps.andThen[Token, O, Boolean, O](deserializer, DeserializerOps.isExhausted)((o, b) => o)
 
     def or(other: Deserializer[Token, O]): Deserializer[Token, O] =
-      DeserializerBuilder.or(deserializer, other)
+      DeserializerOps.or(deserializer, other)
 
     def ||(other: Deserializer[Token, O]): Deserializer[Token, O] = or(other)
   }

@@ -4,9 +4,10 @@ import com.pp.searchcriteria.querystring.QueryString
 import com.pp.searchcriteria.querystring.QueryString._
 import com.pp.searchcriteria.serialization.Serialization.{CanProduceQueryStringDeserializer, Reader, SerializableAsQS, Writer}
 import com.pp.searchcriteria.serialization.Deserializer
-import com.pp.searchcriteria.serialization.Deserializer.DeserializerBuilder
-import com.pp.searchcriteria.serialization.Deserializer.DeserializerBuilder._
-import com.pp.searchcriteria.serialization.SearchCriteriaDeserializationUtils._
+import com.pp.searchcriteria.serialization.Deserializer.{DeserializerOps}
+import com.pp.searchcriteria.serialization.Deserializer.DeserializerOps._
+import com.pp.searchcriteria.serialization.DeserializationUtils._
+import com.pp.searchcriteria.serialization.DeserializerBuilder.HasValue
 
 import scala.util.Random
 
@@ -14,10 +15,19 @@ import scala.util.Random
   *
   * @tparam A
   */
-trait SearchCriteria[A] extends CanProduceQueryStringDeserializer[SearchCriteria[A]] with SerializableAsQS {
+trait SearchCriteria[A] extends CanProduceQueryStringDeserializer[SearchCriteria[A]] with SerializableAsQS { self =>
+  type QSDeserializer = Deserializer[QSParam, SearchCriteria[A]]
   //def isSubCriteriaOf[B <: A](other: SearchCriteria[B]): Boolean
   def check(a: A): Boolean
   def identifier: String
+  def mapDeserializer(f: QSDeserializer => QSDeserializer): SearchCriteria[A] = {
+    new SearchCriteria[A] {
+      override def check(value: A) = self.check(value)
+      override def getDeserializer: Deserializer[QSParam, SearchCriteria[A]] = f(self.getDeserializer)
+      override def toQueryString: QS = self.toQueryString
+      override def identifier: String = self.identifier
+    }
+  }
 }
 
 object SearchCriteria {
@@ -39,7 +49,7 @@ object SearchCriteria {
     }
   }
 
-  def create[A](criteria: SearchCriteria[A])(implicit writer: Writer[A], reader: Reader[A]) =
+  def create[A](criteria: SearchCriteria[A])(implicit writer: Writer[A], reader: Reader[A]): Criteria[A] =
     new Criteria[A](Random.nextString(10), criteria, None)(writer, reader)
 
   /**
@@ -59,7 +69,9 @@ object SearchCriteria {
     * @tparam A
     */
   case class Criteria[A](identifier: String, criteria: SearchCriteria[A], props: Option[SearchProps] = None)
-                        (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] {
+                        (implicit writer: Writer[A], reader: Reader[A])
+
+    extends SearchCriteria[A]  with HasValue[Option[SearchProps]] {
 
     override def check(value: A): Boolean = criteria.check(value)
 
@@ -100,10 +112,10 @@ object SearchCriteria {
       type Token = QSParam
       type Header = (String, Int, Int)
       val limitDeserializer: Deserializer[Token, Int] =
-        DeserializerBuilder.check[Token, Int](keyEqual("limit"), "Key should equal \"limit\"")(_._2.toInt)
+        DeserializerOps.check[Token, Int](keyEqual("limit"), "Key should equal \"limit\"")(_._2.toInt)
 
       val pageDeserializer: Deserializer[Token, Int] =
-        DeserializerBuilder.check[Token, Int](keyEqual("page"), "Key should equal \"page\"")(_._2.toInt)
+        DeserializerOps.check[Token, Int](keyEqual("page"), "Key should equal \"page\"")(_._2.toInt)
 
       def headerDeserializer(criteriaName: String): Deserializer[Token, Header] =
         single("criteria" -> criteriaName, criteriaName)
@@ -116,6 +128,8 @@ object SearchCriteria {
           Criteria[A](identifier, searchCriteria).limit(limit).page(page)
         }
     }
+
+    override def getValue: Option[SearchProps] = props
   }
 
   /**
@@ -154,7 +168,7 @@ object SearchCriteria {
     * @tparam A
     */
   case class And[A](criteria: Seq[SearchCriteria[A]])
-                   (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] {
+                   (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] with HasValue[Int] {
 
     override def check(value: A): Boolean = criteria.forall(_.check(value))
 
@@ -175,13 +189,14 @@ object SearchCriteria {
       )
     }
 
-
     override def identifier: String = "And"
+
+    override def getValue: Int = criteria.length
   }
 
   object And {
     def apply[A](criteria: SearchCriteria[A]*)
-                (implicit writer: Writer[A], reader: Reader[A]): SearchCriteria[A] = And(criteria)
+                (implicit writer: Writer[A], reader: Reader[A]): And[A] = And(criteria)
   }
 
   /**
@@ -192,7 +207,7 @@ object SearchCriteria {
     * @tparam A
     */
   case class Or[A](criteria: Seq[SearchCriteria[A]])
-                  (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] {
+                  (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] with HasValue[Int] {
 
     override def check(value: A): Boolean = criteria.exists(_.check(value))
 
@@ -214,11 +229,12 @@ object SearchCriteria {
 
     override def identifier: String = "Or"
 
+    override def getValue: Int = criteria.length
   }
 
   object Or {
     def apply[A](criteria: SearchCriteria[A]*)
-                (implicit writer: Writer[A], reader: Reader[A]): SearchCriteria[A] = Or(criteria)
+                (implicit writer: Writer[A], reader: Reader[A]): Or[A] = Or(criteria)
   }
 
   /**
@@ -238,7 +254,7 @@ object SearchCriteria {
     }
 
     def getDeserializer: Deserializer[QSParam, Not[A]] =
-      DeserializerBuilder
+      DeserializerOps
         .check[Token, Token](keyEqual(identifier), failMessage = s"Key should equal '$identifier'")(t => t)
         .flatMap { case t =>
             deserializeTimes[Token, SearchCriteria[A]](criteria.getDeserializer, 1) {
@@ -256,7 +272,8 @@ object SearchCriteria {
     * @param reader
     * @tparam A
     */
-  case class Equal[A](value: A)(implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] {
+  case class Equal[A](value: A)
+                     (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] with HasValue[A] {
 
     override def check(value: A): Boolean = this.value == value
 
@@ -266,6 +283,8 @@ object SearchCriteria {
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue: A = value
   }
 
   /**
@@ -333,7 +352,8 @@ object SearchCriteria {
     * @param value
     */
   case class StringContains(value: String)
-                           (implicit writer: Writer[String], reader: Reader[String]) extends SearchCriteria[String] {
+                           (implicit writer: Writer[String], reader: Reader[String])
+    extends SearchCriteria[String] with HasValue[String] {
 
     override def check(value: String): Boolean = value.contains(this.value)
 
@@ -343,6 +363,8 @@ object SearchCriteria {
     override def toQueryString: QS = QueryString.fromPair(identifier, value)
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue: String = value
   }
 
   /**
@@ -354,7 +376,8 @@ object SearchCriteria {
     * @tparam T
     */
   case class SeqContains[A, T <: Seq[A]](value: A)
-                                        (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[T] {
+                                        (implicit writer: Writer[A], reader: Reader[A])
+    extends SearchCriteria[T] with HasValue[A] {
 
     override def check(value: T): Boolean = value.contains(this.value)
 
@@ -364,6 +387,8 @@ object SearchCriteria {
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue: A = value
   }
 
   /**
@@ -375,7 +400,8 @@ object SearchCriteria {
     * @tparam T
     */
   case class SetContains[A, T <: Set[A]](value: A)
-                                        (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[T] {
+                                        (implicit writer: Writer[A], reader: Reader[A])
+    extends SearchCriteria[T] with HasValue[A] {
 
     override def check(value: T): Boolean = value.contains(this.value)
 
@@ -385,13 +411,16 @@ object SearchCriteria {
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue: A = value
   }
 
   /**
     *
     * @param value
     */
-  case class MatchRegEx(value: String)(implicit writer: Writer[String], reader: Reader[String]) extends SearchCriteria[String] {
+  case class MatchRegEx(value: String)(implicit writer: Writer[String], reader: Reader[String])
+    extends SearchCriteria[String] with HasValue[String] {
 
     val regEx = value.r
 
@@ -403,6 +432,8 @@ object SearchCriteria {
     override def toQueryString: QS = QueryString.fromPair(identifier, value)
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue: String = value
   }
 
   /**
@@ -414,7 +445,7 @@ object SearchCriteria {
     * @tparam N
     */
   case class LessThan[N](value: N)(implicit ordering: Ordering[N], writer: Writer[N], reader: Reader[N])
-    extends SearchCriteria[N] {
+    extends SearchCriteria[N] with HasValue[N] {
 
     override def check(value: N): Boolean = ordering.lt(value, this.value)
 
@@ -424,6 +455,8 @@ object SearchCriteria {
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue: N = value
   }
 
   /**
@@ -435,7 +468,7 @@ object SearchCriteria {
     * @tparam N
     */
   case class LessOrEqual[N](value: N)(implicit ordering: Ordering[N], writer: Writer[N], reader: Reader[N])
-    extends SearchCriteria[N] {
+    extends SearchCriteria[N] with HasValue[N] {
 
     override def check(value: N): Boolean = ordering.lteq(value, this.value)
 
@@ -445,6 +478,8 @@ object SearchCriteria {
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue: N = value
   }
 
   /**
@@ -456,7 +491,7 @@ object SearchCriteria {
     * @tparam N
     */
   case class GreaterThan[N](value: N)(implicit ordering: Ordering[N], writer: Writer[N], reader: Reader[N])
-    extends SearchCriteria[N] {
+    extends SearchCriteria[N] with HasValue[N] {
 
     override def check(value: N): Boolean = ordering.gt(value, this.value)
 
@@ -466,6 +501,8 @@ object SearchCriteria {
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue: N = value
   }
 
   /**
@@ -477,7 +514,7 @@ object SearchCriteria {
     * @tparam N
     */
   case class GreaterOrEqual[N](value: N)(implicit ordering: Ordering[N], writer: Writer[N], reader: Reader[N])
-    extends SearchCriteria[N] {
+    extends SearchCriteria[N] with HasValue[N] {
 
     override def check(value: N): Boolean = ordering.gteq(value, this.value)
 
@@ -487,6 +524,29 @@ object SearchCriteria {
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue: N = value
+  }
+
+
+  case class Between[N](from: N, to: N)(implicit ordering: Ordering[N], writer: Writer[(N, N)], reader: Reader[(N, N)])
+    extends SearchCriteria[N] with HasValue[(N, N)] {
+
+    override def check(value: N): Boolean = ordering.gt(value, from) && ordering.lt(value, to)
+
+    override def getDeserializer: Deserializer[QSParam, Between[N]] =
+      checkAndTransformDeserializer[(N, N), Between[N]](
+        keyEqual(identifier),
+        s"Key should equal '$identifier'",
+        reader,
+        pair => Between(pair._1, pair._2)
+      )
+
+    override def toQueryString: QS = QueryString.fromPair(identifier, writer.write((from, to)))
+
+    override def identifier: String = getClass.getSimpleName
+
+    override def getValue: (N, N) = (from, to)
   }
 
   /**
@@ -500,14 +560,14 @@ object SearchCriteria {
   /**
     *
     */
-  object Between{
-    def apply[A](from: A, to: A)
-                (implicit ordering: Ordering[A], writer: Writer[A], reader: Reader[A]) : SearchCriteria[A] =
-      And(
-        GreaterThan(from),
-        LessThan(to)
-      )
-  }
+//  object Between{
+//    def apply[A](from: A, to: A)
+//                (implicit ordering: Ordering[A], writer: Writer[A], reader: Reader[A]) : And[A] =
+//      And(
+//        GreaterThan(from),
+//        LessThan(to)
+//      )
+//  }
 
   /**
     *
@@ -561,7 +621,7 @@ object SearchCriteria {
       Seq(representation)
 
     override def getDeserializer: Deserializer[QSParam, SearchCriteria[String]] =
-      DeserializerBuilder.single(representation, this)
+      DeserializerOps.single(representation, this)
 
     private val representation = identifier -> "1"
 
@@ -580,7 +640,7 @@ object SearchCriteria {
       Seq(representation)
 
     override def getDeserializer: Deserializer[QSParam, SearchCriteria[T]] =
-      DeserializerBuilder.single(representation, this)
+      DeserializerOps.single(representation, this)
 
     private val representation = identifier -> "1"
 

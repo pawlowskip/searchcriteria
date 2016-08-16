@@ -1,6 +1,6 @@
 package com.pp.searchcriteria.serialization
 import com.pp.searchcriteria.serialization.Deserializer._
-import com.pp.searchcriteria.serialization.Deserializer.DeserializerBuilder._
+import com.pp.searchcriteria.serialization.Deserializer.DeserializerOps._
 import utest.TestSuite
 import utest._
 
