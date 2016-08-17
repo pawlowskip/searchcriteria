@@ -40,11 +40,11 @@ object Serialization {
 
   trait SerializableAsJson {}
 
-  trait CanProduceDeserializer[Token, A] {
+  trait CanProduceDeserializer[Token, +A] {
     def getDeserializer: Deserializer[Token, A]
   }
 
-  trait CanProduceQueryStringDeserializer[A]
+  trait CanProduceQueryStringDeserializer[+A]
     extends CanProduceDeserializer[QueryString.QSParam, A]
 
   trait CanProduceXmlDeserializer[A]

@@ -15,10 +15,10 @@ object SearchCriteriaTest extends TestSuite {
 
     "Test[1] - SearchCriteria companion : apply method" - {
 
-      val criteria = SearchCriteria.apply[Int]("int test", (i: Int) => i < 3)
+      val criteria = SearchCriteria.apply[Int, Unit]("int test", (i: Int) => i < 3, Unit)
 
       "should return instance of SearchCriteria[Int]" - {
-        assert(criteria.isInstanceOf[SearchCriteria[Int]])
+        assert(criteria.isInstanceOf[SearchCriteria[Int, Unit]])
       }
 
       "should check if x < 3" - {
@@ -39,8 +39,10 @@ object SearchCriteriaTest extends TestSuite {
 
     "Test[3] - Logical SearchCriteria" - {
 
-      val tupleFirstOneCriteria: SearchCriteria[(Int, Int)] = SearchCriteria[(Int, Int)]("int test1", t => t._1 == 1)
-      val tupleSecondTwoCriteria: SearchCriteria[(Int, Int)] = SearchCriteria[(Int, Int)]("int test2", t => t._2 == 2)
+      val tupleFirstOneCriteria: SearchCriteria[(Int, Int), Unit] =
+        SearchCriteria[(Int, Int), Unit]("int test1", t => t._1 == 1, Unit)
+      val tupleSecondTwoCriteria: SearchCriteria[(Int, Int), Unit] =
+        SearchCriteria[(Int, Int), Unit]("int test2", t => t._2 == 2, Unit)
 
       "And criteria" - {
         val criteria = create[(Int, Int)](

@@ -1,19 +1,40 @@
 package com.pp.searchcriteria.serialization
 
 import com.pp.searchcriteria.core.SearchCriteria
+import com.pp.searchcriteria.querystring.QueryString.QSParam
 
 /**
   * Created by pp on 8/15/16.
   */
 object DeserializerBuilder {
 
-  trait SearchCriteriaValidation[A, V] {
-    val searchCriteria: SearchCriteria[A] with HasValue[V]
-    def where(f: V => Boolean, failMessage: String = ""): SearchCriteria[A] = {
-      searchCriteria.mapDeserializer { deserializer =>
-        if (f(searchCriteria.getValue)) deserializer
-        else Deserializer.failed(s"Validation error: $failMessage")
+  trait SearchCriteriaValidation[A, +V] {
+    val searchCriteria: SearchCriteria[A, V]
+    def where(f: V => Boolean, failMessage: String = ""): SearchCriteria[A, V] = {
+//      searchCriteria.mapDeserializer { deserializer =>
+//        deserializer.mapResult {
+//          case ok @ Ok(sc, _, _, _) if f(sc.getValue) => ok
+//          case Ok(_, inputLeft, tokensParsed, messageStack) =>
+//            Fail(s"Validation failed: $failMessage", inputLeft, messageStack)
+//          case fail @ Fail(_, _, _) => fail
+//        }
+//      }
+
+      new SearchCriteria[A, V] {
+        override def check(value: A) = searchCriteria.check(value)
+        override def getDeserializer: Deserializer[QSParam, SearchCriteria[A, V]] = {
+          searchCriteria.getDeserializer.mapResult {
+            case ok @ Ok(sc, _, _, _) if f(sc.getValue) => ok
+            case Ok(_, inputLeft, tokensParsed, messageStack) =>
+              Fail(s"Validation failed: $failMessage", inputLeft, messageStack)
+            case fail @ Fail(_, _, _) => fail
+          }
+        }
+        override def toQueryString = searchCriteria.toQueryString
+        override def identifier: String = searchCriteria.identifier
+        override def getValue: V = searchCriteria.getValue
       }
+
     }
 
   }
@@ -21,7 +42,7 @@ object DeserializerBuilder {
   /**
     * Indicates possibility of getting value of type [T]
     */
-  trait HasValue[T] {
+  trait HasValue[+T] {
     def getValue: T
   }
 
@@ -29,9 +50,11 @@ object DeserializerBuilder {
     * Placeholder method
     * @return null value as Type [A]
     */
-  def * [A]: A = _
+  def * [A]: A = {
+    null.asInstanceOf[A]
+  }
 
-  implicit def toSearchCriteriaValidation[A, V](sc: SearchCriteria[A] with HasValue[V]): SearchCriteriaValidation[A, V] = {
+  implicit def toSearchCriteriaValidation[A, V](sc: SearchCriteria[A, V]): SearchCriteriaValidation[A, V] = {
     new SearchCriteriaValidation[A, V] { val searchCriteria = sc}
   }
 

@@ -15,42 +15,51 @@ import scala.util.Random
   *
   * @tparam A
   */
-trait SearchCriteria[A] extends CanProduceQueryStringDeserializer[SearchCriteria[A]] with SerializableAsQS { self =>
-  type QSDeserializer = Deserializer[QSParam, SearchCriteria[A]]
+trait SearchCriteria[A, +Value]
+  extends CanProduceQueryStringDeserializer[SearchCriteria[A, Value]] 
+    with SerializableAsQS with HasValue[Value] { self =>
+  //type QSDeserializer = Deserializer[QSParam, SearchCriteria[A, Value]]
   //def isSubCriteriaOf[B <: A](other: SearchCriteria[B]): Boolean
   def check(a: A): Boolean
   def identifier: String
-  def mapDeserializer(f: QSDeserializer => QSDeserializer): SearchCriteria[A] = {
-    new SearchCriteria[A] {
-      override def check(value: A) = self.check(value)
-      override def getDeserializer: Deserializer[QSParam, SearchCriteria[A]] = f(self.getDeserializer)
-      override def toQueryString: QS = self.toQueryString
-      override def identifier: String = self.identifier
-    }
-  }
+//  def mapDeserializer(f: QSDeserializer => QSDeserializer): SearchCriteria[A, Value] = {
+//    new SearchCriteria[A, Value] {
+//      override def check(value: A) = self.check(value)
+//      override def getDeserializer: Deserializer[QSParam, SearchCriteria[A, Value]] = f(self.getDeserializer)
+//      override def toQueryString: QS = self.toQueryString
+//      override def identifier: String = self.identifier
+//      override def getValue: Value = self.getValue
+//    }
+//  }
+
 }
 
 object SearchCriteria {
 
-  def apply[A](name: String,
-               checkFunction: A => Boolean,
-               toQueryStringFun: Seq[QSParam] = Seq(),
-               deserializer: Deserializer[QSParam, SearchCriteria[A]] =
-                             Deserializer.failed[QSParam, SearchCriteria[A]]("Not implemented!")) = {
+  type SCriteria[A] = SearchCriteria[A, Any]
 
-    new SearchCriteria[A] {
+  def apply[A, Value](name: String,
+                      checkFunction: A => Boolean,
+                      value: Value,
+                      toQueryStringFun: Seq[QSParam] = Seq(),
+                      deserializer: Deserializer[QSParam, SearchCriteria[A, Value]] =
+                             Deserializer.failed[QSParam, SearchCriteria[A, Value]]("Not implemented!")) = {
+
+    new SearchCriteria[A, Value] {
       override def check(value: A) = checkFunction(value)
 
-      override def getDeserializer: Deserializer[QSParam, SearchCriteria[A]] = deserializer
+      override def getDeserializer: Deserializer[QSParam, SearchCriteria[A, Value]] = deserializer
 
       override def toQueryString: QS = toQueryStringFun
 
       override def identifier: String = name
+
+      override def getValue: Value = value
     }
   }
 
-  def create[A](criteria: SearchCriteria[A])(implicit writer: Writer[A], reader: Reader[A]): Criteria[A] =
-    new Criteria[A](Random.nextString(10), criteria, None)(writer, reader)
+  def create[A](criteria: SearchCriteria[A, Any])(implicit writer: Writer[A], reader: Reader[A]): Criteria[A, Any] =
+    new Criteria[A, Any](Random.nextString(10), criteria, None)(writer, reader)
 
   /**
     *
@@ -68,29 +77,29 @@ object SearchCriteria {
     * @param reader
     * @tparam A
     */
-  case class Criteria[A](identifier: String, criteria: SearchCriteria[A], props: Option[SearchProps] = None)
+  case class Criteria[A, Value](identifier: String, criteria: SearchCriteria[A, Value], props: Option[SearchProps] = None)
                         (implicit writer: Writer[A], reader: Reader[A])
 
-    extends SearchCriteria[A]  with HasValue[Option[SearchProps]] {
+    extends SearchCriteria[A, Option[SearchProps]] {
 
     override def check(value: A): Boolean = criteria.check(value)
 
     private val defaultLimit = 10
 
-    private def checkProps: Criteria[A] = props match {
+    private def checkProps: Criteria[A, Value] = props match {
       case Some(SearchProps(-1, -1)) => this.copy(props = None)
       case _ => this
     }
 
-    def limit(i: Int): Criteria[A] = this.copy(props = Some(SearchProps(i, 0))).checkProps
+    def limit(i: Int): Criteria[A, Value] = this.copy(props = Some(SearchProps(i, 0))).checkProps
 
-    def page(p: Int): Criteria[A] = props match {
+    def page(p: Int): Criteria[A, Value] = props match {
       case None => this.copy(props = Some(SearchProps(defaultLimit, p)))
       case Some(SearchProps(l, _)) => this.copy(props = Some(SearchProps(l, p))).checkProps
       case _ => this.copy(props = Some(SearchProps(defaultLimit, p)))
     }
 
-    def withName(name: String): Criteria[A] = copy(identifier = name)
+    def withName(name: String): Criteria[A, Value] = copy(identifier = name)
 
     override def toQueryString: Seq[QSParam] = {
       val params = collection.mutable.ListBuffer[QSParam]()
@@ -107,7 +116,7 @@ object SearchCriteria {
       params.toList
     }
 
-    override def getDeserializer: Deserializer[QSParam, SearchCriteria[A]] = {
+    override def getDeserializer: Deserializer[QSParam, Criteria[A, Value]] = {
       import QueryString.keyEqual
       type Token = QSParam
       type Header = (String, Int, Int)
@@ -123,9 +132,9 @@ object SearchCriteria {
           .andThen[Int, Header](pageDeserializer)((a: (String, Int), b: Int) => (a._1, a._2, b))
 
       headerDeserializer(identifier)
-        .andThen[SearchCriteria[A], Criteria[A]](criteria.getDeserializer) { (header, searchCriteria) =>
+        .andThen[SearchCriteria[A, Value], Criteria[A, Value]](criteria.getDeserializer) { (header, searchCriteria) =>
           val (name, limit, page) = header
-          Criteria[A](identifier, searchCriteria).limit(limit).page(page)
+          Criteria[A, Value](identifier, searchCriteria).limit(limit).page(page)
         }
     }
 
@@ -135,29 +144,29 @@ object SearchCriteria {
   /**
     *
     * @param f
-    * @param writer
-    * @param reader
     * @tparam F
     * @tparam C
     */
-  abstract class Field[F, C](f: C => F)(implicit writer: Writer[C], reader: Reader[C]) extends SearchCriteria[C] {
+  abstract class Field[F, C](f: C => F) extends SearchCriteria[C, Unit] {
 
-    val criteria: SearchCriteria[F]
+    val criteria: SearchCriteria[F, Any]
 
-    override val identifier = getClass.getSimpleName
+    override val identifier = s""""${getClass.getSimpleName}""""
 
     override def check(value: C): Boolean = criteria.check(f(value))
 
     override def toQueryString: Seq[QSParam] =
-      Seq("field" -> s""""$identifier"""") ++ criteria.toQueryString
+      Seq("field" -> identifier) ++ criteria.toQueryString
 
-    override def getDeserializer: Deserializer[QSParam, SearchCriteria[C]] =
+    override def getDeserializer: Deserializer[QSParam, SearchCriteria[C, Unit]] =
       single("field" -> identifier, Unit)
-        .andThen[SearchCriteria[F], SearchCriteria[C]](criteria.getDeserializer){(_, sf) =>
+        .andThen[SearchCriteria[F, Any], SearchCriteria[C, Unit]](criteria.getDeserializer){(_, sf) =>
           new Field(f) {
-            override val criteria: SearchCriteria[F] = sf
+            override val criteria: SearchCriteria[F, Any] = sf
           }
         }
+
+    override def getValue: Unit = Unit
   }
 
   /**
@@ -167,8 +176,8 @@ object SearchCriteria {
     * @param reader
     * @tparam A
     */
-  case class And[A](criteria: Seq[SearchCriteria[A]])
-                   (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] with HasValue[Int] {
+  case class And[A](criteria: SearchCriteria[A, Any]*)
+                   (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A, Int] {
 
     override def check(value: A): Boolean = criteria.forall(_.check(value))
 
@@ -185,7 +194,7 @@ object SearchCriteria {
         _._2.toInt,
         s"Value for param '$identifier' should be convertable to Int.",
         criteria.map(_.getDeserializer),
-        seq => And(seq)
+        seq => And(seq: _*)
       )
     }
 
@@ -194,10 +203,10 @@ object SearchCriteria {
     override def getValue: Int = criteria.length
   }
 
-  object And {
-    def apply[A](criteria: SearchCriteria[A]*)
-                (implicit writer: Writer[A], reader: Reader[A]): And[A] = And(criteria)
-  }
+//  object And {
+//    def apply[A](criteria: SearchCriteria[A, Value]*)
+//                (implicit writer: Writer[A], reader: Reader[A]): And[A] = new And(criteria)
+//  }
 
   /**
     *
@@ -206,8 +215,8 @@ object SearchCriteria {
     * @param reader
     * @tparam A
     */
-  case class Or[A](criteria: Seq[SearchCriteria[A]])
-                  (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] with HasValue[Int] {
+  case class Or[A](criteria: SearchCriteria[A, Any]*)
+                  (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A, Int] {
 
     override def check(value: A): Boolean = criteria.exists(_.check(value))
 
@@ -224,7 +233,7 @@ object SearchCriteria {
         _._2.toInt,
         s"Value for param '$identifier' should be convertable to Int.",
         criteria.map(_.getDeserializer),
-        seq => Or(seq)
+        seq => Or(seq: _*)
       )
 
     override def identifier: String = "Or"
@@ -232,17 +241,17 @@ object SearchCriteria {
     override def getValue: Int = criteria.length
   }
 
-  object Or {
-    def apply[A](criteria: SearchCriteria[A]*)
-                (implicit writer: Writer[A], reader: Reader[A]): Or[A] = Or(criteria)
-  }
+//  object Or {
+//    def apply[A](criteria: SearchCriteria[A, Value]*)
+//                (implicit writer: Writer[A], reader: Reader[A]): Or[A] = new Or(criteria)
+//  }
 
   /**
     *
     * @param criteria
     * @tparam A
     */
-  case class Not[A](criteria: SearchCriteria[A]) extends SearchCriteria[A] {
+  case class Not[A](criteria: SearchCriteria[A, Any]) extends SearchCriteria[A, Unit] {
 
     override def check(value: A): Boolean = !criteria.check(value)
 
@@ -257,12 +266,14 @@ object SearchCriteria {
       DeserializerOps
         .check[Token, Token](keyEqual(identifier), failMessage = s"Key should equal '$identifier'")(t => t)
         .flatMap { case t =>
-            deserializeTimes[Token, SearchCriteria[A]](criteria.getDeserializer, 1) {
+            deserializeTimes[Token, SearchCriteria[A, Any]](criteria.getDeserializer, 1) {
               case _ => true
             }.map(seq => Not(seq.head))
         }
 
     override def identifier: String = "Not"
+
+    override def getValue = Unit
   }
 
   /**
@@ -273,12 +284,14 @@ object SearchCriteria {
     * @tparam A
     */
   case class Equal[A](value: A)
-                     (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A] with HasValue[A] {
+                     (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A, A] {
 
     override def check(value: A): Boolean = this.value == value
 
     override def getDeserializer: Deserializer[QSParam, Equal[A]] =
-      checkAndTransformDeserializer[A, Equal[A]](keyEqual(identifier), s"Key should equal '$identifier'", reader, Equal[A](_))
+      checkAndTransformDeserializer[A, Equal[A]](
+        keyEqual(identifier), s"Key should equal '$identifier'", reader, Equal[A](_)
+      )
 
     override def toQueryString: QS = QueryString.fromPair(identifier, writer.write(value))
 
@@ -293,7 +306,7 @@ object SearchCriteria {
     * @tparam A
     */
   trait ContainsInvoker[C, A] {
-    def contains(a: A): SearchCriteria[C]
+    def contains(a: A): SearchCriteria[C, A]
   }
 
   /**
@@ -307,7 +320,7 @@ object SearchCriteria {
     * @return
     */
   def Contains[C, A](value: A)(implicit containsInvoker: ContainsInvoker[C, A],
-                               writer: Writer[A], reader: Reader[A]) : SearchCriteria[C] = {
+                               writer: Writer[A], reader: Reader[A]) : SearchCriteria[C, A] = {
 
     containsInvoker.contains(value)
   }
@@ -315,9 +328,10 @@ object SearchCriteria {
   /**
     *
     */
-  implicit val stringContainsInvoker: ContainsInvoker[String, String] = new ContainsInvoker[String, String] {
-    override def contains(value: String): SearchCriteria[String] = StringContains(value)
-  }
+  implicit val stringContainsInvoker: ContainsInvoker[String, String] =
+    new ContainsInvoker[String, String] {
+      override def contains(value: String): SearchCriteria[String, String] = StringContains(value)
+    }
 
   /**
     *
@@ -330,7 +344,7 @@ object SearchCriteria {
   implicit def seqContainsInvoker[Elem, Col <: Seq[Elem]](implicit writer: Writer[Elem], reader: Reader[Elem])
   : ContainsInvoker[Col, Elem] = new ContainsInvoker[Col, Elem] {
 
-    override def contains(value: Elem): SearchCriteria[Col] = SeqContains[Elem, Col](value)
+    override def contains(value: Elem): SearchCriteria[Col, Elem] = SeqContains[Elem, Col](value)
   }
 
   /**
@@ -344,7 +358,7 @@ object SearchCriteria {
   implicit def setContainsInvoker[Elem, Col <: Set[Elem]]
   (implicit writer: Writer[Elem], reader: Reader[Elem]) : ContainsInvoker[Col, Elem] = new ContainsInvoker[Col, Elem] {
 
-    override def contains(value: Elem): SearchCriteria[Col] = SetContains[Elem, Col](value)
+    override def contains(value: Elem): SearchCriteria[Col, Elem] = SetContains[Elem, Col](value)
   }
 
   /**
@@ -353,7 +367,7 @@ object SearchCriteria {
     */
   case class StringContains(value: String)
                            (implicit writer: Writer[String], reader: Reader[String])
-    extends SearchCriteria[String] with HasValue[String] {
+    extends SearchCriteria[String, String] {
 
     override def check(value: String): Boolean = value.contains(this.value)
 
@@ -377,7 +391,7 @@ object SearchCriteria {
     */
   case class SeqContains[A, T <: Seq[A]](value: A)
                                         (implicit writer: Writer[A], reader: Reader[A])
-    extends SearchCriteria[T] with HasValue[A] {
+    extends SearchCriteria[T, A] {
 
     override def check(value: T): Boolean = value.contains(this.value)
 
@@ -401,7 +415,7 @@ object SearchCriteria {
     */
   case class SetContains[A, T <: Set[A]](value: A)
                                         (implicit writer: Writer[A], reader: Reader[A])
-    extends SearchCriteria[T] with HasValue[A] {
+    extends SearchCriteria[T, A] {
 
     override def check(value: T): Boolean = value.contains(this.value)
 
@@ -420,7 +434,7 @@ object SearchCriteria {
     * @param value
     */
   case class MatchRegEx(value: String)(implicit writer: Writer[String], reader: Reader[String])
-    extends SearchCriteria[String] with HasValue[String] {
+    extends SearchCriteria[String, String] {
 
     val regEx = value.r
 
@@ -445,7 +459,7 @@ object SearchCriteria {
     * @tparam N
     */
   case class LessThan[N](value: N)(implicit ordering: Ordering[N], writer: Writer[N], reader: Reader[N])
-    extends SearchCriteria[N] with HasValue[N] {
+    extends SearchCriteria[N, N] {
 
     override def check(value: N): Boolean = ordering.lt(value, this.value)
 
@@ -468,7 +482,7 @@ object SearchCriteria {
     * @tparam N
     */
   case class LessOrEqual[N](value: N)(implicit ordering: Ordering[N], writer: Writer[N], reader: Reader[N])
-    extends SearchCriteria[N] with HasValue[N] {
+    extends SearchCriteria[N, N] {
 
     override def check(value: N): Boolean = ordering.lteq(value, this.value)
 
@@ -491,7 +505,7 @@ object SearchCriteria {
     * @tparam N
     */
   case class GreaterThan[N](value: N)(implicit ordering: Ordering[N], writer: Writer[N], reader: Reader[N])
-    extends SearchCriteria[N] with HasValue[N] {
+    extends SearchCriteria[N, N] {
 
     override def check(value: N): Boolean = ordering.gt(value, this.value)
 
@@ -514,7 +528,7 @@ object SearchCriteria {
     * @tparam N
     */
   case class GreaterOrEqual[N](value: N)(implicit ordering: Ordering[N], writer: Writer[N], reader: Reader[N])
-    extends SearchCriteria[N] with HasValue[N] {
+    extends SearchCriteria[N, N] {
 
     override def check(value: N): Boolean = ordering.gteq(value, this.value)
 
@@ -530,7 +544,7 @@ object SearchCriteria {
 
 
   case class Between[N](from: N, to: N)(implicit ordering: Ordering[N], writer: Writer[(N, N)], reader: Reader[(N, N)])
-    extends SearchCriteria[N] with HasValue[(N, N)] {
+    extends SearchCriteria[N, (N, N)] {
 
     override def check(value: N): Boolean = ordering.gt(value, from) && ordering.lt(value, to)
 
@@ -549,12 +563,32 @@ object SearchCriteria {
     override def getValue: (N, N) = (from, to)
   }
 
+//  case class Optional[A](criteriaOpt: Option[SearchCriteria[A, Value]],
+//                         withAbsence: Either[Boolean, SearchCriteria[A, Value]] = Left(true)) extends SearchCriteria[A, Value] {
+//
+//    lazy val checkFunction: A => Boolean = criteriaOpt match {
+//      case Some(criteria) => a => criteria.check(a)
+//      case None => withAbsence match {
+//        case Left(b) => a => b
+//        case Right(criteria) => a => criteria.check(a)
+//      }
+//    }
+//
+//    override def check(a: A): Boolean = checkFunction(a)
+//
+//    override def identifier: String = "Optional"
+//
+//    override def toQueryString: QS = ???
+//
+//    override def getDeserializer: Deserializer[(String, String), SearchCriteria[A, Value]] = ???
+//  }
+
   /**
     *
     */
   object In {
     def apply[A](criteria: Seq[A])
-                (implicit writer: Writer[A], reader: Reader[A]): SearchCriteria[A] = Or(criteria.map(Equal(_)): _*)
+                (implicit writer: Writer[A], reader: Reader[A]): SearchCriteria[A, Int] = Or(criteria.map(Equal(_)): _*)
   }
 
   /**
@@ -574,7 +608,7 @@ object SearchCriteria {
     * @tparam T
     */
   trait NotEmptyInvoker[T]{
-    def notEmpty: SearchCriteria[T]
+    def notEmpty: SearchCriteria[T, Unit]
   }
 
   /**
@@ -583,7 +617,7 @@ object SearchCriteria {
     * @tparam T
     * @return
     */
-  def NotEmpty[T](implicit notEmptyInvoker: NotEmptyInvoker[T]): SearchCriteria[T] = notEmptyInvoker.notEmpty
+  def NotEmpty[T](implicit notEmptyInvoker: NotEmptyInvoker[T]): SearchCriteria[T, Unit] = notEmptyInvoker.notEmpty
 
   /**
     *
@@ -591,14 +625,14 @@ object SearchCriteria {
     * @tparam T
     * @return
     */
-  def IsEmpty[T](implicit notEmptyInvoker: NotEmptyInvoker[T]): SearchCriteria[T] = Not(notEmptyInvoker.notEmpty)
+  def IsEmpty[T](implicit notEmptyInvoker: NotEmptyInvoker[T]): SearchCriteria[T, Unit] = Not[T](notEmptyInvoker.notEmpty)
 
 
   /**
     *
     */
   implicit val nonEmptyString: NotEmptyInvoker[String] = new NotEmptyInvoker[String] {
-    override def notEmpty: SearchCriteria[String] = NotEmptyString
+    override def notEmpty: SearchCriteria[String, Unit] = NotEmptyString
   }
 
   /**
@@ -607,44 +641,48 @@ object SearchCriteria {
     * @return
     */
   implicit def nonEmptyCollection[T <: Traversable[_]]: NotEmptyInvoker[T] = new NotEmptyInvoker[T] {
-    override def notEmpty: SearchCriteria[T] = NotEmptyCollection()
+    override def notEmpty: SearchCriteria[T, Unit] = NotEmptyCollection()
   }
 
   /**
     *
     */
-  case object NotEmptyString extends SearchCriteria[String] {
+  case object NotEmptyString extends SearchCriteria[String, Unit] {
 
     override def check(value: String): Boolean = value.nonEmpty
 
     override def toQueryString: Seq[QSParam] =
       Seq(representation)
 
-    override def getDeserializer: Deserializer[QSParam, SearchCriteria[String]] =
+    override def getDeserializer: Deserializer[QSParam, SearchCriteria[String, Unit]] =
       DeserializerOps.single(representation, this)
 
     private val representation = identifier -> "1"
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue = Unit
   }
 
   /**
     *
     * @tparam T
     */
-  case class NotEmptyCollection[T <: Traversable[_]]() extends SearchCriteria[T] {
+  case class NotEmptyCollection[T <: Traversable[_]]() extends SearchCriteria[T, Unit] {
 
     override def check(value: T): Boolean = value.nonEmpty
 
     override def toQueryString: Seq[QSParam] =
       Seq(representation)
 
-    override def getDeserializer: Deserializer[QSParam, SearchCriteria[T]] =
+    override def getDeserializer: Deserializer[QSParam, SearchCriteria[T, Unit]] =
       DeserializerOps.single(representation, this)
 
     private val representation = identifier -> "1"
 
     override def identifier: String = getClass.getSimpleName
+
+    override def getValue = Unit
   }
 
 

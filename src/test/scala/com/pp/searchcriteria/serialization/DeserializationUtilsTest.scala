@@ -46,19 +46,19 @@ object DeserializationUtilsTest extends TestSuite {
       val des4 = oneOfToken(Seq(("4", "4") -> Equal(4), ("5", "5") -> Equal(5)))
 
 
-      val des: Deserializer[QSParam, SearchCriteria[Int]] = multiValueDeserializer(
+      val des: Deserializer[QSParam, Or[Int]] = multiValueDeserializer(
         _._1 == "Ala",
         _._2.toInt,
         "Key should be 'Ala'",
         Seq(des1, des2, des3, des4),
-        Or(_)
+        seq => Or(seq: _*)
       )
 
       des.deserialize(Seq(("Ala", "3"), ("1", "1"), ("2", "2"), ("3", "3"))) ==>
-        Ok(Or(Seq(Equal(1), Equal(2), Equal(3))), emptyInput, 4, Nil)
+        Ok(Or(Equal(1), Equal(2), Equal(3)), emptyInput, 4, Nil)
 
       des.deserialize(Seq(("Ala", "3"), ("1", "1"), ("4", "4"), ("3", "3"))) ==>
-        Ok(Or(Seq(Equal(1), Equal(4), Equal(3))), emptyInput, 4, Nil)
+        Ok(Or(Equal(1), Equal(4), Equal(3)), emptyInput, 4, Nil)
 
       des.deserialize(Seq(("Ala", "4"), ("1", "1"), ("2", "2"), ("7", "7"), ("3", "3"))) ==>
         Fail(

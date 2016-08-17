@@ -12,7 +12,7 @@ trait CanSearchCollection[A] {
 
 object CanSearchCollection {
 
-  class FilterExecutor[A](criteria: SearchCriteria[A]) extends  CanSearchCollection[A] {
+  class FilterExecutor[A](criteria: SearchCriteria[A, Any]) extends  CanSearchCollection[A] {
     override def filter[C <: Iterable[A]](collection: C): Iterable[A] = criteria match {
       case Criteria(_, searchCriteria, None) => collection.filter(a => searchCriteria.check(a))
       case Criteria(_, searchCriteria, Some(SearchProps(limit, page))) =>
@@ -21,7 +21,7 @@ object CanSearchCollection {
     }
   }
 
-  implicit def fromSearchCriteria[A](searchCriteria: SearchCriteria[A]): CanSearchCollection[A] = {
+  implicit def fromSearchCriteria[A](searchCriteria: SearchCriteria[A, Any]): CanSearchCollection[A] = {
     new FilterExecutor[A](searchCriteria)
   }
 }

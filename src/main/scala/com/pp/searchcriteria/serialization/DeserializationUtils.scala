@@ -18,13 +18,13 @@ object DeserializationUtils {
   def multiValueDeserializer[T, Comb[T]](firstTokenPredicate: Token => Boolean,
                                          countFromFirstToken: Token => Int,
                                          failMessage: String,
-                                         possibleDeserializers: Seq[Deserializer[Token, SearchCriteria[T]]],
-                                         success: Seq[SearchCriteria[T]] => Comb[T]): Deserializer[Token, Comb[T]] =
+                                         possibleDeserializers: Seq[Deserializer[Token, SearchCriteria[T, Any]]],
+                                         success: Seq[SearchCriteria[T, Any]] => Comb[T]): Deserializer[Token, Comb[T]] =
     check[Token, Int](firstTokenPredicate, failMessage)(countFromFirstToken)
       .flatMap {
         case i if i < 0 => Deserializer.failed(s"Should contain positive number of required deserializations (passed $i).")
         case i =>
-          deserializeTimes[Token, SearchCriteria[T]](oneOf(possibleDeserializers), i) { // Can works without this always true
+          deserializeTimes[Token, SearchCriteria[T, Any]](oneOf(possibleDeserializers), i) {
             case _  => true
           }.map(success(_))
       }
