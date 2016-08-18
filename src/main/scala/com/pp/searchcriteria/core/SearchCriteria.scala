@@ -300,6 +300,36 @@ object SearchCriteria {
     override def getValue: A = value
   }
 
+  case class OneOf[A](criteriaSeq: Seq[SearchCriteria[A, Any]], ifEmpty: Boolean) extends SearchCriteria[A, Any] {
+
+    override def check(a: A): Boolean = criteriaSeq.headOption match {
+      case None => ifEmpty
+      case Some(c)  => c.check(a)
+    }
+
+    override def identifier: String = "OneOf"
+
+    override def toQueryString: QS = criteriaSeq.headOption match {
+      case None => Seq(identifier -> "isEmpty")
+      case Some(c) => c.toQueryString
+    }
+
+    override def getDeserializer: Deserializer[(String, String), SearchCriteria[A, Any]] = {
+      oneOf(criteriaSeq.map(_.getDeserializer))
+    }
+
+    override def getValue: Any = criteriaSeq.headOption match {
+      case None => Unit
+      case Some(c) => c.getValue
+    }
+  }
+
+  object OneOf {
+    def apply[A](criteria: SearchCriteria[A, Any]*): OneOf[A] = {
+      OneOf(criteria, ifEmpty = false)
+    }
+  }
+
   /**
     *
     * @tparam C

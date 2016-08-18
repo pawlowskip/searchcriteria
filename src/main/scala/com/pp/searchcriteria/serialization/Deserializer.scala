@@ -219,23 +219,23 @@ object Deserializer {
 
     def deserializeTimes[Token, O](des: Deserializer[Token, O], n: Int)(predicate: O => Boolean): Deserializer[Token, Seq[O]] = {
       require(n > 0)
-      def deserializeTimes0(acc: Seq[O], parsed: Int, times: Int): Deserializer[Token, Seq[O]] = {
+      def deserializeTimes0(acc: Seq[O], parsed: Int, times: Int, messageStack: Seq[String]): Deserializer[Token, Seq[O]] = {
         if (times < n) {
           des.flatMapResult {
-            case Ok(out, inputLeft, tokensParsed, _) if predicate(out) =>
-              deserializeTimes0(acc :+ out, parsed + tokensParsed, times + 1)
-            case Ok(out, inputLeft, tokensParsed, _) =>
-              deserializeTimes0(acc, parsed, times)
-            case fail @ Fail(cause, inputLeft, messageStack) =>
+            case Ok(out, inputLeft, tokensParsed, messages) if predicate(out) =>
+              deserializeTimes0(acc :+ out, parsed + tokensParsed, times + 1, messages ++ messageStack)
+            case Ok(out, inputLeft, tokensParsed, messages) =>
+              deserializeTimes0(acc, parsed, times, messages ++ messageStack)
+            case fail @ Fail(cause, inputLeft, messages) =>
               always(Fail(
                 s"Fail during deserializeTimes. Processed $times times, but should be $n.",
                 inputLeft,
-                cause :: messageStack
+                cause :: messages ::: messageStack.toList
               ))
           }
-        } else Deserializer((input: Input[Token]) => Ok(acc, input, parsed, Nil))
+        } else Deserializer((input: Input[Token]) => Ok(acc, input, parsed, messageStack.toList))
       }
-      deserializeTimes0(Seq.empty[O], 0, 0)
+      deserializeTimes0(Seq.empty[O], 0, 0, Seq.empty)
     }
 
     def oneOfToken[Token, O](tokens: Seq[(Token, O)]): Deserializer[Token, O] = tokens match {
@@ -243,9 +243,10 @@ object Deserializer {
       case (token, o) +: rest => single[Token, O](token, o).flatMapResult {
         case ok@Ok(_, _, _, _) => always(ok)
         case Fail(cause, _, messageStack) =>
-          oneOfToken(rest).mapFail{ fail =>
-            fail.withStackMessage(stack => cause :: messageStack ::: stack)
-          }
+          oneOfToken(rest)//.mapResult(_.withStackMessage(stack => cause :: messageStack ::: stack))
+            .mapFail{ fail =>
+              fail.withStackMessage(stack => cause :: messageStack ::: stack)
+            }
       }
     }
 
@@ -254,9 +255,10 @@ object Deserializer {
       case des +: rest => des.flatMapResult {
         case ok@Ok(_, _, _, _) => always(ok)
         case Fail(cause, _, messageStack) =>
-          oneOf(rest).mapFail{ fail =>
-            fail.withStackMessage(stack => cause :: messageStack ::: stack)
-          }
+          oneOf(rest)//.mapResult(_.withStackMessage(stack => cause :: messageStack ::: stack))
+            .mapFail{ fail =>
+              fail.withStackMessage(stack => cause :: messageStack ::: stack)
+            }
       }
     }
 
