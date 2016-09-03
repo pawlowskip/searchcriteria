@@ -81,7 +81,6 @@ object DeserializerBuilderTest extends TestSuite {
             MovieDescription(
               OneOf(NotEmptyString, IsEmpty[String])
             ),
-            MovieMyRating(Equal(*)),
             MovieViewers(
               GreaterThan[Int](*) where(_ > 0)
             ),
@@ -135,6 +134,8 @@ object DeserializerBuilderTest extends TestSuite {
 
       deserializedQS1.get.filter(SampleData.movies) ==> criteria1.filter(SampleData.movies)
 
+
+      // TODO test an fix fail messages propagation (in above example it will not add to messages stack 'Id should be grather or ...')
 
     }
   }

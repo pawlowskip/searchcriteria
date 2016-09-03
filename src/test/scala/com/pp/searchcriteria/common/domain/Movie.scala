@@ -11,7 +11,6 @@ case class Movie(id: Int,
                  year: Int,
                  poster: Poster,
                  averageRating: Double,
-                 myRating: Option[Int],
                  viewers: Int,
                  description: String)
 
@@ -26,8 +25,6 @@ object Movie {
   case class MoviePoster(criteria: SCriteria[Poster]) extends Field[Poster, Movie](_.poster)
 
   case class MovieAverageRating(criteria: SCriteria[Double]) extends Field[Double, Movie](_.averageRating)
-
-  case class MovieMyRating(criteria: SCriteria[Option[Int]]) extends Field[Option[Int], Movie](_.myRating)
 
   case class MovieViewers(criteria: SCriteria[Int]) extends Field[Int, Movie](_.viewers)
 

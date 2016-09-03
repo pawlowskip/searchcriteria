@@ -1,13 +1,15 @@
 package com.pp.searchcriteria.core
 
+import com.pp.searchcriteria.core.search.CanProduceMongoQuery
 import com.pp.searchcriteria.querystring.QueryString
 import com.pp.searchcriteria.querystring.QueryString._
 import com.pp.searchcriteria.serialization.Serialization.{CanProduceQueryStringDeserializer, Reader, SerializableAsQS, Writer}
 import com.pp.searchcriteria.serialization.Deserializer
-import com.pp.searchcriteria.serialization.Deserializer.{DeserializerOps}
+import com.pp.searchcriteria.serialization.Deserializer.DeserializerOps
 import com.pp.searchcriteria.serialization.Deserializer.DeserializerOps._
 import com.pp.searchcriteria.serialization.DeserializationUtils._
 import com.pp.searchcriteria.serialization.DeserializerBuilder.HasValue
+import reactivemongo.bson.{BSONDocument, BSONValue, BSONWriter}
 
 import scala.util.Random
 
@@ -17,7 +19,9 @@ import scala.util.Random
   */
 trait SearchCriteria[A, +Value]
   extends CanProduceQueryStringDeserializer[SearchCriteria[A, Value]] 
-    with SerializableAsQS with HasValue[Value] { self =>
+    with SerializableAsQS
+    with HasValue[Value]
+    with CanProduceMongoQuery { self =>
   //type QSDeserializer = Deserializer[QSParam, SearchCriteria[A, Value]]
   //def isSubCriteriaOf[B <: A](other: SearchCriteria[B]): Boolean
   def check(a: A): Boolean
@@ -147,7 +151,7 @@ object SearchCriteria {
     * @tparam F
     * @tparam C
     */
-  abstract class Field[F, C](f: C => F) extends SearchCriteria[C, Unit] {
+  abstract class Field[F, C](f: C => F) extends SearchCriteria[C, Unit] { self =>
 
     val criteria: SearchCriteria[F, Any]
 
@@ -163,6 +167,7 @@ object SearchCriteria {
         .andThen[SearchCriteria[F, Any], SearchCriteria[C, Unit]](criteria.getDeserializer){(_, sf) =>
           new Field(f) {
             override val criteria: SearchCriteria[F, Any] = sf
+            override def mongoQuery: BSONDocument = BSONDocument(self.identifier -> criteria.mongoQuery)
           }
         }
 
@@ -201,6 +206,8 @@ object SearchCriteria {
     override def identifier: String = "And"
 
     override def getValue: Int = criteria.length
+
+    override def mongoQuery: BSONDocument = BSONDocument("$and" -> criteria.map(_.mongoQuery))
   }
 
 //  object And {
@@ -239,6 +246,8 @@ object SearchCriteria {
     override def identifier: String = "Or"
 
     override def getValue: Int = criteria.length
+
+    override def mongoQuery: BSONDocument = BSONDocument("$or" -> criteria.map(_.mongoQuery))
   }
 
 //  object Or {
@@ -274,6 +283,11 @@ object SearchCriteria {
     override def identifier: String = "Not"
 
     override def getValue = Unit
+
+    override def mongoQuery: BSONDocument = criteria match {
+      case Equal(value) => BSONDocument("$ne" -> criteria.mongoQuery)
+      case _ => BSONDocument("$not" -> criteria.mongoQuery)
+    }
   }
 
   /**
@@ -284,7 +298,8 @@ object SearchCriteria {
     * @tparam A
     */
   case class Equal[A](value: A)
-                     (implicit writer: Writer[A], reader: Reader[A]) extends SearchCriteria[A, A] {
+                     (implicit writer: Writer[A], reader: Reader[A],
+                      bsonWriter: Either[BSONWriter[A, BSONValue], BSONWriter[A, BSONDocument]]) extends SearchCriteria[A, A] {
 
     override def check(value: A): Boolean = this.value == value
 
@@ -298,6 +313,8 @@ object SearchCriteria {
     override def identifier: String = getClass.getSimpleName
 
     override def getValue: A = value
+
+    override def mongoQuery: BSONDocument = ???
   }
 
   case class OneOf[A](criteriaSeq: Seq[SearchCriteria[A, Any]], ifEmpty: Boolean) extends SearchCriteria[A, Any] {
@@ -321,6 +338,11 @@ object SearchCriteria {
     override def getValue: Any = criteriaSeq.headOption match {
       case None => Unit
       case Some(c) => c.getValue
+    }
+
+    override def mongoQuery: BSONDocument = criteriaSeq.headOption match {
+      case None => BSONDocument()
+      case Some(c) => c.mongoQuery
     }
   }
 
